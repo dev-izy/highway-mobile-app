@@ -17,6 +17,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Live production URL hosted on Railway
+const BASE_URL = 'https://highway-backend-production.up.railway.app';
+
 export default function ReportScreen(): React.JSX.Element {
   const { lat, lng } = useLocalSearchParams<{ lat: string; lng: string }>();
   const router = useRouter();
@@ -47,50 +50,49 @@ export default function ReportScreen(): React.JSX.Element {
     }
   };
 
-  // Inside app/report.tsx handleSubmitReport function:
-const handleSubmitReport = async () => {
-  if (!description.trim()) {
-    Alert.alert('Missing Info', 'Please provide a brief description of the incident.');
-    return;
-  }
+  const handleSubmitReport = async () => {
+    if (!description.trim()) {
+      Alert.alert('Missing Info', 'Please provide a brief description of the incident.');
+      return;
+    }
 
- setSubmitting(true);
-  const newReport = {
-    id: `INC-${Math.floor(100 + Math.random() * 900)}`,
-    highway: highwayName,
-    severity,
-    description,
-    latitude: latitude ? Number(latitude) : 6.6923,
-    longitude: longitude ? Number(longitude) : 3.4285,
-    image: imageUri,
-    timestamp: new Date().toLocaleTimeString(),
+    setSubmitting(true);
+    const newReport = {
+      id: `INC-${Math.floor(100 + Math.random() * 900)}`,
+      highway: highwayName,
+      severity,
+      description,
+      latitude: latitude ? Number(latitude) : 6.6923,
+      longitude: longitude ? Number(longitude) : 3.4285,
+      image: imageUri,
+      timestamp: new Date().toLocaleTimeString(),
+    };
+
+    try {
+      // Live server sync via Railway endpoint
+      await fetch(`${BASE_URL}/api/incidents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newReport),
+      });
+
+      Alert.alert('Report Live!', 'Your emergency report was transmitted immediately to the FRSC control center.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error) {
+      // Save to offline storage if server is unreachable
+      const existingData = await AsyncStorage.getItem('@offline_reports');
+      const reports = existingData ? JSON.parse(existingData) : [];
+      reports.push({ ...newReport, synced: false });
+      await AsyncStorage.setItem('@offline_reports', JSON.stringify(reports));
+
+      Alert.alert('Saved Offline', 'Network connection unavailable. Report queued locally.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } finally {
+      setSubmitting(false);
+    }
   };
-
-  try {
-    // Attempt live server sync (Use local IP address if testing on physical phone)
-    await fetch('http://localhost:5000/api/incidents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newReport),
-    });
-
-    Alert.alert('Report Live!', 'Your emergency report was transmitted immediately to the FRSC control center.', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
-  } catch (error) {
-    // Save to offline storage if server unreachable
-    const existingData = await AsyncStorage.getItem('@offline_reports');
-    const reports = existingData ? JSON.parse(existingData) : [];
-    reports.push({ ...newReport, synced: false });
-    await AsyncStorage.setItem('@offline_reports', JSON.stringify(reports));
-
-    Alert.alert('Saved Offline', 'Network connection unavailable. Report queued locally.', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
-  } finally {
-    setSubmitting(false);
-  }
-};
 
   return (
     <SafeAreaView style={styles.container}>
